@@ -5,107 +5,42 @@ import lombok.Builder;
 import lombok.Data;
 
 import lombok.NoArgsConstructor;
-import org.bson.types.ObjectId;
 import lombok.Data;
 
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.mapping.Field;
-
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
-@Data
-@Document("competitions")
-@AllArgsConstructor
-@NoArgsConstructor
+import jakarta.persistence.*;
+import lombok.Data;
+
+
+@Entity
 public class Competition {
+
+    @jakarta.persistence.Id
     @Id
-    private String id;
-    private String raceName;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public String getRaceName() {
-        return raceName;
-    }
+    @Column(name = "name", nullable = false)
+    private String name;
 
-    public void setRaceName(String raceName) {
-        this.raceName = raceName;
-    }
+    @ManyToOne
+    @JoinColumn(name = "organizer_id")
+    private Organizer organizer;
 
-    public String getReleasePointGps() {
-        return releasePointGps;
-    }
+    @ManyToMany
+    private List<User> participants;
 
-    public void setReleasePointGps(String releasePointGps) {
-        this.releasePointGps = releasePointGps;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public LocalDate getDepartureDate() {
-        return departureDate;
-    }
-
-    public void setDepartureDate(LocalDate departureDate) {
-        this.departureDate = departureDate;
-    }
-
-    public LocalTime getDepartureTime() {
-        return departureTime;
-    }
-
-    public void setDepartureTime(LocalTime departureTime) {
-        this.departureTime = departureTime;
-    }
-
-    public Duration getDuration() {
-        return duration;
-    }
-
-    public void setDuration(Duration duration) {
-        this.duration = duration;
-    }
-
-    public double getDistance() {
-        return distance;
-    }
-
-    public void setDistance(double distance) {
-        this.distance = distance;
-    }
-
-    public List<String> getBreeders() {
-        return breeders;
-    }
-
-    public void setBreeders(List<String> breeders) {
-        this.breeders = breeders;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    private String releasePointGps;
-    private String status;
-    private LocalDate departureDate;
-    private LocalTime departureTime;
-    private Duration duration;
-    private double distance;
-    @Field("breeders")
-    private List<String> breeders;
-
+    public Long getId() {
+        return id;
+    }
 }

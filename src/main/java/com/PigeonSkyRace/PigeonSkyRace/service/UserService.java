@@ -1,75 +1,88 @@
 package com.PigeonSkyRace.PigeonSkyRace.service;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
-import com.PigeonSkyRace.PigeonSkyRace.exception.entitesCustomExceptions.NoUserWasFoundException;
-import com.PigeonSkyRace.PigeonSkyRace.helper.Validator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.PigeonSkyRace.PigeonSkyRace.dto.UserRegistrationDto;
-import com.PigeonSkyRace.PigeonSkyRace.model.Breeder;
-import com.PigeonSkyRace.PigeonSkyRace.model.Pigeon;
-import com.PigeonSkyRace.PigeonSkyRace.repository.BreederRepository;
-import com.PigeonSkyRace.PigeonSkyRace.repository.PigeonsRepository;
+import com.PigeonSkyRace.PigeonSkyRace.Mapper.UserMapper;
+import com.PigeonSkyRace.PigeonSkyRace.dto.request.UserRequest;
+import com.PigeonSkyRace.PigeonSkyRace.dto.response.LoginResponse;
+import com.PigeonSkyRace.PigeonSkyRace.dto.response.UserResponse;
+import com.PigeonSkyRace.PigeonSkyRace.dto.update.UserUpdate;
+import com.PigeonSkyRace.PigeonSkyRace.enums.Role;
+import com.PigeonSkyRace.PigeonSkyRace.exception.entitesCustomExceptions.UsernameAlreadyExistsException;
+import com.PigeonSkyRace.PigeonSkyRace.model.RoleEntity;
+import com.PigeonSkyRace.PigeonSkyRace.model.User;
+import com.PigeonSkyRace.PigeonSkyRace.repository.RoleRepository;
+import com.PigeonSkyRace.PigeonSkyRace.repository.UserRepository;
+import com.PigeonSkyRace.PigeonSkyRace.utils.JWTUtils;
+
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class UserService {
 
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
     @Autowired
-    private PasswordEncoder passwordEncoder;
+    private  PasswordEncoder passwordEncoder;
+    private final AuthenticationManager authenticationManager;
+    private final RoleRepository roleRepository;
+    private final JWTUtils jwtUtils;
 
-    @Autowired
-    private Validator validator;
-    @Autowired
-    private BreederRepository breederRepository;
-
-    @Autowired
-    private PigeonsRepository pigeonsRepository;
-
-    public Breeder registerBreederWithPigeons(UserRegistrationDto registrationDTO) {
-        Breeder breeder = new Breeder();
-        breeder.setName(registrationDTO.getName());
-        breeder.setPassword(passwordEncoder.encode(registrationDTO.getPassword()));
-        breeder.setEmail(registrationDTO.getEmail());
-        breeder.setDoveCote(registrationDTO.getDoveCote());
-        breeder.setGpsCoordinates(registrationDTO.getGpsCoordinates());
-        if (registrationDTO.getPassword() == null) {
-            throw new IllegalArgumentException("Password cannot be  daali");
+    public UserResponse registerUser(UserRequest userRequest) {
+        if (userRepository.existsByEmail(userRequest.email())) {
+            throw new UsernameAlreadyExistsException("Email is already in use.");
         }
-        // Extract and set pigeons' ring numbers
-        List<String> pigeonIds = registrationDTO.getPigeons().stream()
-                .map(Pigeon::getRingNumber)
-                .collect(Collectors.toList());
-        breeder.setPigeonIds(pigeonIds);
+        RoleEntity userRole = roleRepository.findByRoleName(Role.USER)
+                .orElseThrow(() -> new RuntimeException("Role 'USER' not found"));
+        User user = userMapper.userRequestToUserEntity(userRequest);
+        user.setPassword(passwordEncoder.encode(userRequest.password()));
+        user.setAuthorities(userRole);
+        userRepository.save(user);
 
-        List<Pigeon> pigeons = registrationDTO.getPigeons();
-        pigeonsRepository.saveAll(pigeons);
-
-        return breederRepository.save(breeder);
+        String roleName = user.getAuthorities().stream()
+                .map(authority -> authority.getAuthority())
+                .findFirst()
+                .orElse("UNKNOWN");
+        return new UserResponse(user.getEmail(), roleName);
     }
 
-    public boolean emailExists(String email) {
-        return breederRepository.existsByEmail(email);
-    }
-
-    public boolean gpsCoordinatesEsists(String gpsCoordinates){
-        return breederRepository.existsByGpsCoordinates(gpsCoordinates);
-    }
-
-    public Breeder login(String email, String password) {
-        if (validator.validateEmail(email) && validator.validatePassword(password)
-                && breederRepository.existsByEmail(email)) {
-            Breeder breeder = breederRepository.findByEmail(email);
-            if (passwordEncoder.matches(password, breeder.getPassword())) {
-                return breeder;
-            } else {
-                throw new NoUserWasFoundException("Incorrect password for the following email: " + email);
-            }
+    public LoginResponse login(UserRequest userRequest) {
+        if (!userRepository.existsByEmail(userRequest.email())) {
+            throw new RuntimeException("User not found");
         }
-        throw new NoUserWasFoundException("No user found with the following email: " + email);
+        authenticationManager
+                .authenticate(new UsernamePasswordAuthenticationToken(userRequest.email(),
+                        userRequest.password()));
+
+        User user = userRepository.findByEmail(userRequest.email()).get();
+        String jwtToken = jwtUtils.generateToken(user);
+        return userMapper.LoginUserEntityToUserResponse(user, jwtToken);
+
+    }
+
+    public UserResponse updateUser(Long userId, UserUpdate userUpdate) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (userUpdate.email() != null && !userUpdate.email().isEmpty()) {
+            user.setEmail(userUpdate.email());
+        }
+        if (userUpdate.password() != null && !userUpdate.password().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(userUpdate.password())); 
+        }
+        if (userUpdate.role() != null && !userUpdate.role().isEmpty()) {
+            RoleEntity newRole = roleRepository.findByRoleName(Role.valueOf(userUpdate.role()))
+                    .orElseThrow(() -> new RuntimeException("Role not found"));
+            user.setAuthorities(newRole);
+        }
+        userRepository.save(user);
+        return userMapper.userEntityToUserResponse(user);
     }
 
 }
